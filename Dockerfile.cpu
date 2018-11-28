@@ -1,0 +1,16 @@
+FROM tensorflow/tensorflow:latest-py3
+
+#ADD PACKAGES
+RUN pip install \
+	gunicorn \
+	flask
+
+#ADD CODE
+ADD ./app /opt/webapp/
+WORKDIR /opt/webapp
+
+#RESET ENTRYPOINT
+ENTRYPOINT []
+
+CMD gunicorn --bind 0.0.0.0:8888 wsgi
+

@@ -43,7 +43,7 @@ def processImageUpload():
     T1 = time.time()
     retDict['time'] = T1-T0
     retDict['labels'] = labels[0] #We only embed 1 object
-    #retDict['embedding'] = embeddings[0].tolist()      
+    retDict['embedding'] = embeddings[0].tolist()      
     return retDict
 
 

@@ -1,9 +1,10 @@
-FROM tensorflow/tensorflow:latest-py3
+FROM tensorflow/tensorflow:1.13.1-py3
 
 #ADD PACKAGES
 RUN pip install \
 	gunicorn \
-	flask
+	flask \
+	Pillow
 
 #ADD CODE
 ADD ./app /opt/webapp/

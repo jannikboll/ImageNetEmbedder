@@ -18,7 +18,7 @@ def processImageUpload():
 
     #Define return dictionary
     retDict = {}
-    retDict['model'] = Embedder.modelCheckpoint.split("/")[-1]
+    retDict['model'] = Embedder.modelPath.split("/")[-1]
     
     #Read data
     f = request.files['image']

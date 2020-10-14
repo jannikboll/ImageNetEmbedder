@@ -1,20 +1,25 @@
 import sys
 sys.path.append("models/research/slim")
 import nets.inception_resnet_v2 as inception_resnet_v2
+#import preprocessing.inception_preprocessing as preprocess
 from nets.inception_utils import inception_arg_scope, slim
 import tensorflow as tf
+#from matplotlib import pyplot as plt
 import numpy as np
+from tensorflow.python.platform import gfile
 import time
+#from PIL import Image
+#from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
 
 class ImageNetEmbedder():
     
     EMBED_SIZE = inception_resnet_v2.inception_resnet_v2.default_image_size #299
     
-    def __init__(self, modelCheckpoint=None, classesPath=None):
-        if modelCheckpoint is None:
-            self.modelCheckpoint = "data/inception_resnet_v2_2016_08_30.ckpt"
+    def __init__(self, modelPath=None, classesPath=None):
+        if modelPath is None:
+            self.modelPath = "data/frozen_model.pb"
         else:
-            self.modelCheckpoint = modelCheckpoint
+            self.modelPath = modelPath
             
         if classesPath is None:
             self.classesPath = "data/imagenet_1000_classes.txt" 
@@ -24,31 +29,23 @@ class ImageNetEmbedder():
         self.graph = tf.Graph()
         self.session = tf.Session(graph=self.graph)
             
-        self.__loadGraph(self.modelCheckpoint)
+        self.__loadGraph(self.modelPath)
         
     def close(self):
         self.session.close()
         
-    def __loadGraph(self, modelCheckpoint):
+    def __loadGraph(self, modelPath):
         T0 = time.time()
         with self.graph.as_default():
-            with self.session.as_default():
-                with slim.arg_scope(inception_arg_scope()): 
-
-                    #Create hooks into model and a nicer input interface
-                    self.input = tf.placeholder(tf.float32,[None,None,None,3],'input_images')
-                    images_processed = tf.image.resize_images(self.input, (ImageNetEmbedder.EMBED_SIZE, ImageNetEmbedder.EMBED_SIZE))
-                    images_processed = tf.subtract(images_processed, 0.5) #Inception net preprocessing
-                    images_processed = tf.multiply(images_processed, 2.0) 
-                    self.images = tf.identity(images_processed, name="processed_images")
-                    _,end_points = inception_resnet_v2.inception_resnet_v2(images_processed, is_training=False, create_aux_logits=False)
-                    self.predictions = tf.identity(end_points['Predictions'], name="predictions")
-                    self.embeddings = tf.identity(end_points['PreLogitsFlatten'], name="embeddings")
-                    
-                    #Restore weights from checkpoint
-                    restorer = tf.train.Saver()
-                    restorer.restore(self.session, modelCheckpoint)
-
+            with self.session.as_default():      
+                with gfile.FastGFile(modelPath,'rb') as f:
+                    graph_def = tf.GraphDef()
+                    graph_def.ParseFromString(f.read())
+                    tf.import_graph_def(graph_def, name='')   
+                self.input = self.graph.get_tensor_by_name('input_images:0')
+                self.images = self.graph.get_tensor_by_name('processed_images:0')
+                self.predictions = self.graph.get_tensor_by_name('predictions:0')
+                self.embeddings = self.graph.get_tensor_by_name('embeddings:0')  
         T1 = time.time()
         print("Time loading model: %2.2fs"%(T1-T0))
         
@@ -82,11 +79,32 @@ class ImageNetEmbedder():
                 T1 = time.time()
                 print("Time embedding %d images: %2.2fs (%2.2fs/im)"%(len(images),T1-T0,(T1-T0)/len(images)))
                 return images_eval
-     
 
 
-#from matplotlib import pyplot as plt
-#from PIL import Image
+    def CreateFrozenGraph(checkpointFile,outputFile):
+        graph = tf.Graph()
+        with tf.Session(graph=graph) as sess:
+            with slim.arg_scope(inception_arg_scope()):
+                images_input = tf.placeholder(tf.float32,[None,None,None,3],'input_images')
+                images_processed = tf.image.resize_images(images_input, (ImageNetEmbedder.EMBED_SIZE, ImageNetEmbedder.EMBED_SIZE))
+                images_processed = tf.subtract(images_processed, 0.5) #Inception net preprocessing
+                images_processed = tf.multiply(images_processed, 2.0)
+                images_processed = tf.identity(images_processed, name="processed_images")
+                _,end_points = inception_resnet_v2.inception_resnet_v2(images_processed, is_training=False, create_aux_logits=False)
+                predictions = tf.identity(end_points['Predictions'], name="predictions")
+                embeddings = tf.identity(end_points['PreLogitsFlatten'], name="embeddings")
+
+                restorer = tf.train.Saver()
+                restorer.restore(sess, checkpointFile)
+
+                output_graph_def = tf.graph_util.convert_variables_to_constants(sess,graph.as_graph_def(),
+                                                                                ["processed_images",
+                                                                                 "predictions",
+                                                                                 "embeddings"])
+                with tf.gfile.GFile(outputFile, "wb") as f:
+                    f.write(output_graph_def.SerializeToString())
+#ImageNetEmbedder.CreateFrozenGraph("./data/inception_resnet_v2_2016_08_30.ckpt","./data/frozen_model.pb")
+
 #embedder = ImageNetEmbedder()
 #
 #images = ["./data/images/Cat.jpg",]
